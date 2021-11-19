@@ -1,40 +1,14 @@
 const httpStatus = require('http-status');
+const { Op } = require('sequelize');
 const { User } = require('../models');
 const ApiError = require('../utils/ApiError');
-
-/**
- * Create a user
- * @param {Object} userBody
- * @returns {Promise<User>}
- */
-const createUser = async (userBody) => {
-  if (await User.isEmailTaken(userBody.email)) {
-    throw new ApiError(httpStatus.BAD_REQUEST, 'Email already taken');
-  }
-  return User.create(userBody);
-};
-
-/**
- * Query for users
- * @param {Object} filter - Mongo filter
- * @param {Object} options - Query options
- * @param {string} [options.sortBy] - Sort option in the format: sortField:(desc|asc)
- * @param {number} [options.limit] - Maximum number of results per page (default = 10)
- * @param {number} [options.page] - Current page (default = 1)
- * @returns {Promise<QueryResult>}
- */
-const queryUsers = async (filter, options) => {
-  const users = await User.paginate(filter, options);
-  return users;
-};
-
 /**
  * Get user by id
  * @param {ObjectId} id
  * @returns {Promise<User>}
  */
-const getUserById = async (id) => {
-  return User.findById(id);
+const getUserById = async (id, options) => {
+  return User.findByPk(id, options);
 };
 
 /**
@@ -42,8 +16,49 @@ const getUserById = async (id) => {
  * @param {string} email
  * @returns {Promise<User>}
  */
-const getUserByEmail = async (email) => {
-  return User.findOne({ email });
+const getUserByEmail = async (email, options = {}) => {
+  const { excludeUserId, ...rest } = options;
+  const exclude = excludeUserId
+    ? {
+        [Op.not]: {
+          id: excludeUserId,
+        },
+      }
+    : undefined;
+
+  return User.findOne({
+    where: {
+      email,
+      ...exclude,
+    },
+    ...rest,
+  });
+};
+
+/**
+ * Create a user
+ * @param {Object} userBody
+ * @returns {Promise<User>}
+ */
+const createUser = async (userBody) => {
+  if (await getUserByEmail(userBody.email)) {
+    throw new ApiError(httpStatus.BAD_REQUEST, 'Email already taken');
+  }
+  const user = await User.create(userBody);
+  return user.toJSON();
+};
+
+/**
+ * Query for users
+ * @param {Object} filter - Mongo filter
+ * @param {Object} options - Query options
+ * @param {number} [options.limit] - Maximum number of results per page (default = 10)
+ * @param {number} [options.page] - Current page (default = 1)
+ * @returns {Promise<QueryResult>}
+ */
+const queryUsers = async (filter, options) => {
+  const users = await User.paginate(options);
+  return users;
 };
 
 /**
@@ -55,12 +70,12 @@ const getUserByEmail = async (email) => {
 const updateUserById = async (userId, updateBody) => {
   const user = await getUserById(userId);
   if (!user) {
-    throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
+    throw new ApiError(httpStatus.NOT_FOUND, 'User not found or had been deleted');
   }
-  if (updateBody.email && (await User.isEmailTaken(updateBody.email, userId))) {
+  if (updateBody.email && (await getUserByEmail(updateBody.email, { excludeUserId: userId }))) {
     throw new ApiError(httpStatus.BAD_REQUEST, 'Email already taken');
   }
-  Object.assign(user, updateBody);
+  user.set(updateBody);
   await user.save();
   return user;
 };
@@ -73,9 +88,9 @@ const updateUserById = async (userId, updateBody) => {
 const deleteUserById = async (userId) => {
   const user = await getUserById(userId);
   if (!user) {
-    throw new ApiError(httpStatus.NOT_FOUND, 'User not found');
+    throw new ApiError(httpStatus.NOT_FOUND, 'User not found or had been deleted');
   }
-  await user.remove();
+  await user.destroy();
   return user;
 };
 

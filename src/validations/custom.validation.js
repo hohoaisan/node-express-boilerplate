@@ -1,6 +1,6 @@
-const objectId = (value, helpers) => {
-  if (!value.match(/^[0-9a-fA-F]{24}$/)) {
-    return helpers.message('"{{#label}}" must be a valid mongo id');
+const UUIDV4 = (value, helpers) => {
+  if (!value.match(/^[0-9A-F]{8}-[0-9A-F]{4}-[4][0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$/i)) {
+    return helpers.message('"{{#label}}" must be a valid id');
   }
   return value;
 };
@@ -16,6 +16,6 @@ const password = (value, helpers) => {
 };
 
 module.exports = {
-  objectId,
   password,
+  UUIDV4,
 };
